@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import MapView from './components/MapView';
-import { calculateCoastlineOffset, convertToKm } from './utils/geo';
+import { calculateCoastlineOffset, calculateCoastlineOffsetProgressive, convertToKm } from './utils/geo';
 import { Menu, X, Check, AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -16,6 +16,7 @@ export default function App() {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [calcProgress, setCalcProgress] = useState(0);
   const [resolution, setResolution] = useState(() => {
     return localStorage.getItem('coastmap_resolution') || 'low';
   });
@@ -171,13 +172,20 @@ export default function App() {
     }
 
     setIsCalculating(true);
+    setCalcProgress(0);
     showToast('Calculando offset global hacia el mar...', 'info');
 
-    // Run turf buffer in a timeout to let UI update and show processing toast
-    setTimeout(() => {
-      try {
-        const geom = calculateCoastlineOffset(coastlinesData, countriesData, distance, unit, true);
-        
+    // Run progressive calculation asynchronously
+    calculateCoastlineOffsetProgressive(
+      coastlinesData,
+      countriesData,
+      distance,
+      unit,
+      true,
+      (progress) => {
+        setCalcProgress(progress);
+      },
+      (geom) => {
         const newOffset = {
           id: Math.random().toString(36).substring(2, 9),
           distance,
@@ -191,13 +199,14 @@ export default function App() {
 
         persistOffsets([newOffset, ...activeOffsets]);
         showToast(`Offset de ${distance} ${unit.toUpperCase()} calculado con éxito.`);
-      } catch (err) {
+        setIsCalculating(false);
+      },
+      (err) => {
         console.error('Error calculando offset global:', err);
         showToast('Error al calcular el offset geográfico.', 'error');
-      } finally {
         setIsCalculating(false);
       }
-    }, 150);
+    );
   };
 
   // 4. Add localized offset for selected country
@@ -205,13 +214,20 @@ export default function App() {
     if (!selectedCountry || !countriesData) return;
 
     setIsCalculating(true);
+    setCalcProgress(0);
     showToast(`Calculando offset para ${selectedCountry.name}...`, 'info');
 
-    setTimeout(() => {
-      try {
-        // Buffer the specific country polygon, but subtract global land borders
-        const geom = calculateCoastlineOffset(selectedCountry.rawFeature, countriesData, distance, unit, true);
-        
+    // Run progressive calculation
+    calculateCoastlineOffsetProgressive(
+      selectedCountry.rawFeature,
+      countriesData,
+      distance,
+      unit,
+      true,
+      (progress) => {
+        setCalcProgress(progress);
+      },
+      (geom) => {
         const newOffset = {
           id: Math.random().toString(36).substring(2, 9),
           distance,
@@ -226,13 +242,14 @@ export default function App() {
         persistOffsets([newOffset, ...activeOffsets]);
         showToast(`Offset localizado para ${selectedCountry.name} calculado.`);
         setMobileSidebarOpen(false); // Close sidebar on mobile to show result
-      } catch (err) {
+        setIsCalculating(false);
+      },
+      (err) => {
         console.error('Error calculando offset localizado:', err);
         showToast('Error al calcular el offset localizado.', 'error');
-      } finally {
         setIsCalculating(false);
       }
-    }, 150);
+    );
   };
 
   // 5. Delete offset
@@ -422,8 +439,8 @@ export default function App() {
               </div>
               <div>
                 <h4 className="font-extrabold text-sm tracking-wide">Calculando Offset</h4>
-                <p className="text-[10px] text-slate-500 mt-1 font-semibold uppercase tracking-wider">
-                  Procesando geometría vectorial
+                <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mt-1">
+                  Procesando: {calcProgress}%
                 </p>
               </div>
             </div>

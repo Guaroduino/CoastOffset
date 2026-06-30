@@ -166,3 +166,125 @@ export const getGeoJSONBounds = (geojson) => {
     return null;
   }
 };
+
+/**
+ * Progressive asynchronously-chunked version of the offset calculator.
+ * Processes the buffer elements in chunks of 15 features using setTimeout(..., 0),
+ * keeping the main thread responsive and updating a progress percentage callback.
+ */
+export const calculateCoastlineOffsetProgressive = (
+  coastlineGeoJSON, 
+  landGeoJSON, 
+  distance, 
+  unit, 
+  clipToSea, 
+  onProgress, 
+  onComplete,
+  onError
+) => {
+  try {
+    const distanceInKm = convertToKm(distance, unit);
+    if (distanceInKm <= 0) {
+      onComplete({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    // 1. Buffer the coastline (very fast geometry buffer)
+    const buffered = turf.buffer(coastlineGeoJSON, distanceInKm, { units: 'kilometers' });
+
+    if (!clipToSea || !landGeoJSON) {
+      onProgress(100);
+      onComplete(buffered);
+      return;
+    }
+
+    // 2. Pre-calculate bounding boxes for land polygons
+    const landFeatures = landGeoJSON.type === 'FeatureCollection' ? landGeoJSON.features : [landGeoJSON];
+    const landPolygons = landFeatures.filter(f => 
+      f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+    );
+
+    const landBboxes = landPolygons.map(f => ({
+      feature: f,
+      bbox: turf.bbox(f)
+    }));
+
+    // Bbox intersection helper
+    const bboxIntersects = (box1, box2) => {
+      return !(box1[2] < box2[0] || box1[0] > box2[2] || box1[3] < box2[1] || box1[1] > box2[3]);
+    };
+
+    const bufferedFeatures = buffered.type === 'FeatureCollection' ? buffered.features : [buffered];
+    const resultFeatures = [];
+    const total = bufferedFeatures.length;
+    let index = 0;
+    const chunkSize = 15; // Process 15 features per frame to prevent UI lag
+
+    const processChunk = () => {
+      const end = Math.min(index + chunkSize, total);
+      
+      for (let i = index; i < end; i++) {
+        const bufFeature = bufferedFeatures[i];
+        if (!bufFeature.geometry) continue;
+
+        const bufBbox = turf.bbox(bufFeature);
+        const intersectingLand = [];
+        for (const item of landBboxes) {
+          if (bboxIntersects(bufBbox, item.bbox)) {
+            intersectingLand.push(item.feature);
+          }
+        }
+
+        if (intersectingLand.length === 0) {
+          resultFeatures.push(bufFeature);
+          continue;
+        }
+
+        let localLandMask = null;
+        try {
+          if (intersectingLand.length === 1) {
+            localLandMask = intersectingLand[0];
+          } else {
+            localLandMask = turf.union(turf.featureCollection(intersectingLand));
+          }
+        } catch (unionError) {
+          localLandMask = intersectingLand[0];
+        }
+
+        if (!localLandMask) {
+          resultFeatures.push(bufFeature);
+          continue;
+        }
+
+        try {
+          const diff = turf.difference(turf.featureCollection([bufFeature, localLandMask]));
+          if (diff) {
+            diff.properties = { ...bufFeature.properties };
+            resultFeatures.push(diff);
+          }
+        } catch (diffError) {
+          resultFeatures.push(bufFeature);
+        }
+      }
+
+      index = end;
+      
+      if (onProgress) {
+        onProgress(Math.round((index / total) * 100));
+      }
+
+      if (index < total) {
+        setTimeout(processChunk, 0); // Yield main thread and loop back
+      } else {
+        onComplete(turf.featureCollection(resultFeatures));
+      }
+    };
+
+    // Begin async chunking loop
+    processChunk();
+
+  } catch (error) {
+    console.error("Geospatial progressive error:", error);
+    onError(error);
+  }
+};
