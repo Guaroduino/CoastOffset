@@ -1,0 +1,406 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import Sidebar from './components/Sidebar';
+import MapView from './components/MapView';
+import { calculateCoastlineOffset, convertToKm } from './utils/geo';
+import { Menu, X, Check, AlertCircle } from 'lucide-react';
+
+export default function App() {
+  // GeoJSON Layers State
+  const [countriesData, setCountriesData] = useState(null);
+  const [coastlinesData, setCoastlinesData] = useState(null);
+  const [customGeoJSON, setCustomGeoJSON] = useState(null);
+  
+  // App Logic State
+  const [activeOffsets, setActiveOffsets] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [selectedCountry, setSelectedCountry] = useState(null);
+  
+  // Theme State
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('coastmap_theme') || 'dark';
+  });
+
+  // UI State
+  const [baseMapStyle, setBaseMapStyle] = useState('dark');
+  const [layerVisibility, setLayerVisibility] = useState({
+    coastlines: true,
+    borders: true,
+    custom: true,
+    customName: ''
+  });
+  const [mapCenter, setMapCenter] = useState([25, -15]);
+  const [mapZoom, setMapZoom] = useState(3);
+  const [mapInstance, setMapInstance] = useState(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Status/Toast Message State
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // 1. Initial Load of world datasets
+  useEffect(() => {
+    fetch('/data/countries.json')
+      .then(res => {
+        if (!res.ok) throw new Error('Network response error');
+        return res.json();
+      })
+      .then(data => setCountriesData(data))
+      .catch(err => {
+        console.error('Error loading country borders:', err);
+        showToast('Error cargando fronteras del mapa base. Revisa la red.', 'error');
+      });
+
+    fetch('/data/coastlines.json')
+      .then(res => {
+        if (!res.ok) throw new Error('Network response error');
+        return res.json();
+      })
+      .then(data => setCoastlinesData(data))
+      .catch(err => {
+        console.error('Error loading coastlines:', err);
+        showToast('Error cargando líneas de costa del mapa base. Revisa la red.', 'error');
+      });
+  }, []);
+
+  // 2. Load Persisted State from LocalStorage
+  useEffect(() => {
+    const savedOffsets = localStorage.getItem('coastmap_offsets');
+    if (savedOffsets) {
+      try {
+        setActiveOffsets(JSON.parse(savedOffsets));
+      } catch (e) {
+        console.error('Failed to parse saved offsets:', e);
+      }
+    }
+
+    const savedBookmarks = localStorage.getItem('coastmap_bookmarks');
+    if (savedBookmarks) {
+      try {
+        setBookmarks(JSON.parse(savedBookmarks));
+      } catch (e) {
+        console.error('Failed to parse saved bookmarks:', e);
+      }
+    }
+
+    const savedStyle = localStorage.getItem('coastmap_base_style');
+    if (savedStyle) {
+      setBaseMapStyle(savedStyle);
+    }
+  }, []);
+
+  // Save changes to localStorage helper
+  const persistOffsets = (offsets) => {
+    setActiveOffsets(offsets);
+    try {
+      localStorage.setItem('coastmap_offsets', JSON.stringify(offsets));
+    } catch (e) {
+      console.warn("Storage quota exceeded. Could not save to localStorage.");
+      showToast('Error al persistir localmente: espacio insuficiente.', 'error');
+    }
+  };
+
+  const persistBookmarks = (bmarks) => {
+    setBookmarks(bmarks);
+    try {
+      localStorage.setItem('coastmap_bookmarks', JSON.stringify(bmarks));
+    } catch (e) {
+      console.warn("Storage quota exceeded. Could not save to localStorage.");
+      showToast('Error al persistir localmente: espacio insuficiente.', 'error');
+    }
+  };
+
+  const persistBaseStyle = (style) => {
+    setBaseMapStyle(style);
+    localStorage.setItem('coastmap_base_style', style);
+  };
+
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('coastmap_theme', nextTheme);
+    
+    // Automatically match map style to theme if not in vector mode
+    if (baseMapStyle !== 'vector') {
+      persistBaseStyle(nextTheme);
+    }
+  };
+
+  // Map moves updates
+  const handleMapMove = useCallback((center, zoom) => {
+    setMapCenter([center.lat, center.lng]);
+    setMapZoom(zoom);
+  }, []);
+
+  // 3. Add global offset
+  const handleAddOffset = ({ distance, unit, label, color }) => {
+    if (!coastlinesData || !countriesData) {
+      showToast('Cargando datos geográficos base... Inténtalo de nuevo en unos segundos.', 'error');
+      return;
+    }
+
+    showToast('Calculando offset global hacia el mar...', 'info');
+
+    // Run turf buffer in a timeout to let UI update and show processing toast
+    setTimeout(() => {
+      const geom = calculateCoastlineOffset(coastlinesData, countriesData, distance, unit, true);
+      
+      const newOffset = {
+        id: Math.random().toString(36).substring(2, 9),
+        distance,
+        unit,
+        distanceInKm: convertToKm(distance, unit),
+        label,
+        color,
+        visible: true,
+        geometry: geom
+      };
+
+      persistOffsets([newOffset, ...activeOffsets]);
+      showToast(`Offset de ${distance} ${unit.toUpperCase()} calculado con éxito.`);
+    }, 50);
+  };
+
+  // 4. Add localized offset for selected country
+  const handleCalculateCountryOffset = (distance, unit, customLabel) => {
+    if (!selectedCountry || !countriesData) return;
+
+    showToast(`Calculando offset para ${selectedCountry.name}...`, 'info');
+
+    setTimeout(() => {
+      // Buffer the specific country polygon, but subtract global land borders
+      const geom = calculateCoastlineOffset(selectedCountry.rawFeature, countriesData, distance, unit, true);
+      
+      const newOffset = {
+        id: Math.random().toString(36).substring(2, 9),
+        distance,
+        unit,
+        distanceInKm: convertToKm(distance, unit),
+        label: customLabel,
+        color: '#f59e0b', // Default yellow accent for country specific
+        visible: true,
+        geometry: geom
+      };
+
+      persistOffsets([newOffset, ...activeOffsets]);
+      showToast(`Offset localizado para ${selectedCountry.name} calculado.`);
+      setMobileSidebarOpen(false); // Close sidebar on mobile to show result
+    }, 50);
+  };
+
+  // 5. Delete offset
+  const handleDeleteOffset = (id) => {
+    const updated = activeOffsets.filter(o => o.id !== id);
+    persistOffsets(updated);
+    showToast('Offset eliminado.');
+  };
+
+  // 6. Toggle visibility of offset
+  const handleToggleOffsetVisibility = (id) => {
+    const updated = activeOffsets.map(o => 
+      o.id === id ? { ...o, visible: !o.visible } : o
+    );
+    persistOffsets(updated);
+  };
+
+  // 7. Save bookmark
+  const handleSaveBookmark = (name) => {
+    const newBookmark = {
+      id: Math.random().toString(36).substring(2, 9),
+      name,
+      center: mapCenter,
+      zoom: mapZoom,
+      activeOffsetIds: activeOffsets.filter(o => o.visible).map(o => o.id),
+      baseMapStyle
+    };
+
+    persistBookmarks([newBookmark, ...bookmarks]);
+    showToast(`Vista "${name}" guardada.`);
+  };
+
+  // 8. Load bookmark
+  const handleLoadBookmark = (b) => {
+    setMapCenter(b.center);
+    setMapZoom(b.zoom);
+    setBaseMapStyle(b.baseMapStyle);
+    
+    // Restore offset visibility matching bookmark config
+    const restored = activeOffsets.map(o => ({
+      ...o,
+      visible: b.activeOffsetIds.includes(o.id)
+    }));
+    persistOffsets(restored);
+    
+    showToast(`Cargada vista: ${b.name}`);
+    setMobileSidebarOpen(false); // Close sidebar on mobile
+  };
+
+  // 9. Delete bookmark
+  const handleDeleteBookmark = (id) => {
+    const updated = bookmarks.filter(b => b.id !== id);
+    persistBookmarks(updated);
+    showToast('Sitio de interés eliminado.');
+  };
+
+  // 10. Custom GeoJSON upload
+  const handleCustomGeoJSONUpload = (geojson, fileName) => {
+    setCustomGeoJSON(geojson);
+    setLayerVisibility({
+      ...layerVisibility,
+      custom: geojson !== null,
+      customName: fileName
+    });
+    if (geojson) {
+      showToast(`Archivo "${fileName}" cargado correctamente.`);
+    } else {
+      showToast('Capa personalizada removida.');
+    }
+  };
+
+  return (
+    <div className={`flex h-screen w-screen overflow-hidden relative theme-${theme} ${theme === 'dark' ? 'bg-black text-slate-100' : 'bg-white text-black'} theme-transition`}>
+      
+      {/* Desktop & Mobile Sidebar Wrapper */}
+      <div className={`
+        absolute md:relative inset-y-0 left-0 z-30 transition-transform duration-300 md:translate-x-0
+        ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        h-full
+      `}>
+        <Sidebar
+          theme={theme}
+          handleToggleTheme={handleToggleTheme}
+          activeOffsets={activeOffsets}
+          handleAddOffset={handleAddOffset}
+          handleDeleteOffset={handleDeleteOffset}
+          handleToggleOffsetVisibility={handleToggleOffsetVisibility}
+          bookmarks={bookmarks}
+          handleSaveBookmark={handleSaveBookmark}
+          handleLoadBookmark={handleLoadBookmark}
+          handleDeleteBookmark={handleDeleteBookmark}
+          selectedCountry={selectedCountry}
+          handleCalculateCountryOffset={handleCalculateCountryOffset}
+          baseMapStyle={baseMapStyle}
+          setBaseMapStyle={persistBaseStyle}
+          layerVisibility={layerVisibility}
+          setLayerVisibility={setLayerVisibility}
+          handleCustomGeoJSONUpload={handleCustomGeoJSONUpload}
+          mapInstance={mapInstance}
+        />
+      </div>
+
+      {/* Main Map View Area */}
+      <main className="flex-1 h-full w-full relative flex flex-col">
+        {/* Floating Header for Mobile / Sidebar toggle */}
+        <header className="absolute top-4 left-4 z-20 pointer-events-auto md:hidden">
+          <button
+            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            className={`p-3 backdrop-blur border rounded-xl shadow-xl transition-colors ${
+              theme === 'dark'
+                ? 'bg-neutral-900/90 border-neutral-800 text-slate-100 hover:bg-neutral-800'
+                : 'bg-white/95 border-slate-200 text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </header>
+
+        {/* Selected Country Details Floating Overlay (Desktop) */}
+        {selectedCountry && !mobileSidebarOpen && (
+          <div className={`absolute top-4 right-4 z-20 pointer-events-auto max-w-sm w-80 glass-panel p-4 rounded-xl shadow-2xl animate-slideDown hidden md:block ${
+            theme === 'dark'
+              ? 'bg-black/90 border-neutral-900 text-slate-100'
+              : 'bg-white/95 border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className={`text-sm font-bold ${theme === 'dark' ? 'text-indigo-400' : 'text-slate-900'}`}>{selectedCountry.name}</h3>
+                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
+                  País Seleccionado
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedCountry(null)}
+                className={`p-1 rounded transition-colors ${
+                  theme === 'dark' ? 'text-slate-500 hover:text-slate-350 hover:bg-neutral-850' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="mt-3 text-xs space-y-2">
+              <div className={`flex justify-between border-b pb-1.5 ${theme === 'dark' ? 'border-neutral-900 text-slate-400' : 'border-slate-105 text-slate-500'}`}>
+                <span>ISO</span>
+                <span className={`font-semibold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>{selectedCountry.isoCode}</span>
+              </div>
+              <div className={`flex justify-between border-b pb-1.5 ${theme === 'dark' ? 'border-neutral-900 text-slate-400' : 'border-slate-105 text-slate-500'}`}>
+                <span>Continente/Región</span>
+                <span className={`font-semibold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>{selectedCountry.region}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              <button
+                onClick={() => handleCalculateCountryOffset(12, 'nm', `12mn (${selectedCountry.name})`)}
+                className={`w-full font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors cursor-pointer text-center border ${
+                  theme === 'dark'
+                    ? 'bg-zinc-950 border-neutral-800 text-slate-200 hover:bg-neutral-900'
+                    : 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200'
+                }`}
+              >
+                Calcular Offset Territorial (12 mn)
+              </button>
+            </div>
+          </div>
+        )}
+
+        <MapView
+          theme={theme}
+          countriesData={countriesData}
+          coastlinesData={coastlinesData}
+          customGeoJSON={customGeoJSON}
+          activeOffsets={activeOffsets}
+          bookmarks={bookmarks}
+          selectedCountry={selectedCountry}
+          onSelectCountry={setSelectedCountry}
+          baseMapStyle={baseMapStyle}
+          layerVisibility={layerVisibility}
+          mapCenter={mapCenter}
+          mapZoom={mapZoom}
+          setMapInstance={setMapInstance}
+          onMapMove={handleMapMove}
+        />
+      </main>
+
+      {/* Mobile Sidebar overlay backdrop */}
+      {mobileSidebarOpen && (
+        <div 
+          onClick={() => setMobileSidebarOpen(false)}
+          className={`absolute inset-0 backdrop-blur-sm z-25 md:hidden ${
+            theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/40'
+          }`}
+        />
+      )}
+
+      {/* Floating Status Notification / Toast */}
+      {toast && (
+        <div className={`
+          absolute bottom-6 right-6 z-40 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 border transition-all duration-300 transform translate-y-0
+          ${theme === 'dark'
+            ? 'bg-neutral-950 border-neutral-900 text-slate-100 shadow-black'
+            : 'bg-white border-slate-200 text-slate-900 shadow-slate-200'}
+        `}>
+          {toast.type === 'error' ? (
+            <AlertCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
+          ) : (
+            <Check className="w-4.5 h-4.5 text-indigo-400 shrink-0" />
+          )}
+          <span className="text-xs font-medium">{toast.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}
