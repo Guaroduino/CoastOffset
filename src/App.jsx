@@ -49,6 +49,8 @@ export default function App() {
   // 1. Load world datasets based on active resolution with loading state and Promise.all
   useEffect(() => {
     setIsLoadingData(true);
+    setCountriesData(null); // Clear old data to unmount Leaflet layers and prevent stale rendering
+    setCoastlinesData(null); // Clear old data to unmount Leaflet layers and prevent stale rendering
     
     const countriesPath = resolution === 'low' ? './data/countries_low.json' : './data/countries_detailed.json';
     const coastlinesPath = resolution === 'low' ? './data/coastlines_low.json' : './data/coastlines_detailed.json';
@@ -66,6 +68,21 @@ export default function App() {
     .then(([countries, coastlines]) => {
       setCountriesData(countries);
       setCoastlinesData(coastlines);
+      
+      // Update rawFeature of selected country to match the new resolution geometry
+      if (selectedCountry) {
+        const updatedFeature = countries.features.find(f => 
+          (f.properties.name === selectedCountry.name || 
+           f.properties.NAME === selectedCountry.name)
+        );
+        if (updatedFeature) {
+          setSelectedCountry(prev => ({
+            ...prev,
+            rawFeature: updatedFeature
+          }));
+        }
+      }
+      
       showToast(`Resolución ${resolution === 'low' ? 'Baja (1:110m)' : 'Alta (1:50m)'} cargada con éxito.`, 'success');
     })
     .catch(err => {
