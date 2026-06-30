@@ -56,56 +56,84 @@ export const calculateCoastlineOffset = (coastlineGeoJSON, landGeoJSON, distance
     }
 
     // 1. Buffer the coastline
-    // turf.buffer works on FeatureCollections, Features, and raw Geometries
     const buffered = turf.buffer(coastlineGeoJSON, distanceInKm, { units: 'kilometers' });
 
     if (!clipToSea || !landGeoJSON) {
       return buffered;
     }
 
-    // 2. Prepare the land geometry for clipping
-    // We union the land polygons to create a single clip mask
-    let landMask = null;
-    try {
-      if (landGeoJSON.type === 'FeatureCollection') {
-        // Turf v7 union takes a FeatureCollection of Polygons/MultiPolygons
-        // Let's filter out any non-polygon features just in case
-        const polygonFeatures = landGeoJSON.features.filter(f => 
-          f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
-        );
-        
-        if (polygonFeatures.length > 0) {
-          landMask = turf.union(turf.featureCollection(polygonFeatures));
-        }
-      } else if (landGeoJSON.type === 'Feature' && (landGeoJSON.geometry.type === 'Polygon' || landGeoJSON.geometry.type === 'MultiPolygon')) {
-        landMask = landGeoJSON;
-      }
-    } catch (unionError) {
-      console.warn("Failed to union land polygons, using raw features list for clipping:", unionError);
-    }
+    // 2. Pre-calculate bounding boxes for land features to optimize spatial lookups
+    const landFeatures = landGeoJSON.type === 'FeatureCollection' 
+      ? landGeoJSON.features 
+      : [landGeoJSON];
+      
+    const landPolygons = landFeatures.filter(f => 
+      f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+    );
 
-    // If we couldn't create a unioned mask, fallback to returning the raw buffer
-    if (!landMask) {
-      return buffered;
-    }
+    const landBboxes = landPolygons.map(f => ({
+      feature: f,
+      bbox: turf.bbox(f)
+    }));
 
-    // 3. Subtract land mask from the buffered coastline
+    // Helper to check if two bounding boxes [minLng, minLat, maxLng, maxLat] intersect
+    const bboxIntersects = (box1, box2) => {
+      return !(box1[2] < box2[0] || // box1 maxLng < box2 minLng
+               box1[0] > box2[2] || // box1 minLng > box2 maxLng
+               box1[3] < box2[1] || // box1 maxLat < box2 minLat
+               box1[1] > box2[3]);  // box1 minLat > box2 maxLat
+    };
+
+    // 3. Subtract land features using spatial filtering
     const resultFeatures = [];
     const bufferedFeatures = buffered.type === 'FeatureCollection' ? buffered.features : [buffered];
 
     for (const bufFeature of bufferedFeatures) {
       if (!bufFeature.geometry) continue;
 
+      const bufBbox = turf.bbox(bufFeature);
+
+      // Find only land features that spatially intersect the bounding box of this buffer feature
+      const intersectingLand = [];
+      for (const item of landBboxes) {
+        if (bboxIntersects(bufBbox, item.bbox)) {
+          intersectingLand.push(item.feature);
+        }
+      }
+
+      if (intersectingLand.length === 0) {
+        // No land intersects this buffer segment, keep it as is (instant win)
+        resultFeatures.push(bufFeature);
+        continue;
+      }
+
+      // Create a localized land mask by unioning ONLY the few intersecting land polygons
+      let localLandMask = null;
       try {
-        // Turf v7 difference: difference(featureCollection([source, clip]))
-        const diff = turf.difference(turf.featureCollection([bufFeature, landMask]));
+        if (intersectingLand.length === 1) {
+          localLandMask = intersectingLand[0];
+        } else {
+          localLandMask = turf.union(turf.featureCollection(intersectingLand));
+        }
+      } catch (unionError) {
+        console.warn("Failed to union local land polygons, using first one as fallback:", unionError);
+        localLandMask = intersectingLand[0];
+      }
+
+      if (!localLandMask) {
+        resultFeatures.push(bufFeature);
+        continue;
+      }
+
+      try {
+        // Subtract only the localized land mask from this specific buffer feature
+        const diff = turf.difference(turf.featureCollection([bufFeature, localLandMask]));
         if (diff) {
-          // Keep the original properties (distance, unit, tag, etc.)
           diff.properties = { ...bufFeature.properties };
           resultFeatures.push(diff);
         }
       } catch (diffError) {
-        console.warn("Turf difference failed for feature, using raw buffer feature:", diffError);
+        console.warn("Turf difference failed for local feature, keeping raw buffer:", diffError);
         resultFeatures.push(bufFeature);
       }
     }
@@ -113,7 +141,6 @@ export const calculateCoastlineOffset = (coastlineGeoJSON, landGeoJSON, distance
     return turf.featureCollection(resultFeatures);
   } catch (error) {
     console.error("Geospatial calculation error:", error);
-    // In case of complete failure, try to return at least the raw buffer
     try {
       const distanceInKm = convertToKm(distance, unit);
       return turf.buffer(coastlineGeoJSON, distanceInKm, { units: 'kilometers' });
