@@ -43,7 +43,7 @@ export default function App() {
 
   // 1. Initial Load of world datasets
   useEffect(() => {
-    fetch('/data/countries.json')
+    fetch('./data/countries.json')
       .then(res => {
         if (!res.ok) throw new Error('Network response error');
         return res.json();
@@ -54,7 +54,7 @@ export default function App() {
         showToast('Error cargando fronteras del mapa base. Revisa la red.', 'error');
       });
 
-    fetch('/data/coastlines.json')
+    fetch('./data/coastlines.json')
       .then(res => {
         if (!res.ok) throw new Error('Network response error');
         return res.json();
