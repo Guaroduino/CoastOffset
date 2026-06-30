@@ -46,7 +46,9 @@ export default function Sidebar({
   layerVisibility,
   setLayerVisibility,
   handleCustomGeoJSONUpload,
-  mapInstance
+  mapInstance,
+  resolution,
+  setResolution
 }) {
   const [activeTab, setActiveTab] = useState('offsets');
   
@@ -589,6 +591,58 @@ export default function Sidebar({
                 >
                   Solo Vector
                 </button>
+              </div>
+            </div>
+
+            {/* Resolution Selector */}
+            <div className="space-y-3">
+              <h2 className={panelTitleClass}>Resolución de Datos Base</h2>
+              <div className={`border p-4 rounded-xl space-y-3 ${
+                theme === 'dark' ? 'bg-zinc-950/30 border-neutral-900' : 'bg-slate-50 border-slate-150'
+              }`}>
+                <div className="flex flex-col gap-3">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="resolution"
+                      value="low"
+                      checked={resolution === 'low'}
+                      onChange={() => setResolution('low')}
+                      className={`w-4 h-4 mt-0.5 focus:ring-offset-slate-900 focus:ring-2 ${
+                        theme === 'dark' ? 'text-indigo-600 bg-black border-neutral-800 focus:ring-indigo-500' : 'text-black bg-white border-slate-300 focus:ring-black'
+                      }`}
+                    />
+                    <div>
+                      <span className={`text-xs font-semibold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                        Baja (1:110m)
+                      </span>
+                      <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
+                        Cálculos instantáneos. Recomendado para ordenadores o móviles de gama baja. (~1 MB)
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="resolution"
+                      value="detailed"
+                      checked={resolution === 'detailed'}
+                      onChange={() => setResolution('detailed')}
+                      className={`w-4 h-4 mt-0.5 focus:ring-offset-slate-900 focus:ring-2 ${
+                        theme === 'dark' ? 'text-indigo-600 bg-black border-neutral-800 focus:ring-indigo-500' : 'text-black bg-white border-slate-300 focus:ring-black'
+                      }`}
+                    />
+                    <div>
+                      <span className={`text-xs font-semibold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                        Alta (1:50m)
+                      </span>
+                      <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
+                        Líneas detalladas e islas adicionales. Requiere mayor capacidad de procesador. (~4.7 MB)
+                      </span>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
 

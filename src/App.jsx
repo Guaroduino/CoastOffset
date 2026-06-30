@@ -15,6 +15,9 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState([]);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [resolution, setResolution] = useState(() => {
+    return localStorage.getItem('coastmap_resolution') || 'detailed';
+  });
   
   // Theme State
   const [theme, setTheme] = useState(() => {
@@ -42,9 +45,12 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // 1. Initial Load of world datasets
+  // 1. Initial Load of world datasets based on active resolution
   useEffect(() => {
-    fetch('./data/countries.json')
+    const countriesPath = resolution === 'low' ? './data/countries_low.json' : './data/countries.json';
+    const coastlinesPath = resolution === 'low' ? './data/coastlines_low.json' : './data/coastlines.json';
+
+    fetch(countriesPath)
       .then(res => {
         if (!res.ok) throw new Error('Network response error');
         return res.json();
@@ -55,7 +61,7 @@ export default function App() {
         showToast('Error cargando fronteras del mapa base. Revisa la red.', 'error');
       });
 
-    fetch('./data/coastlines.json')
+    fetch(coastlinesPath)
       .then(res => {
         if (!res.ok) throw new Error('Network response error');
         return res.json();
@@ -65,7 +71,7 @@ export default function App() {
         console.error('Error loading coastlines:', err);
         showToast('Error cargando líneas de costa del mapa base. Revisa la red.', 'error');
       });
-  }, []);
+  }, [resolution]);
 
   // 2. Load Persisted State from LocalStorage
   useEffect(() => {
@@ -306,6 +312,12 @@ export default function App() {
           setLayerVisibility={setLayerVisibility}
           handleCustomGeoJSONUpload={handleCustomGeoJSONUpload}
           mapInstance={mapInstance}
+          resolution={resolution}
+          setResolution={(res) => {
+            setResolution(res);
+            localStorage.setItem('coastmap_resolution', res);
+            showToast(`Cargando resolución: ${res === 'low' ? 'Baja (1:110m)' : 'Alta (1:50m)'}...`, 'info');
+          }}
         />
       </div>
 

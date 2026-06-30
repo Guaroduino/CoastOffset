@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg', 'data/countries.json', 'data/coastlines.json'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg', 'data/countries.json', 'data/coastlines.json', 'data/countries_low.json', 'data/coastlines_low.json'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,json}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // 6MB limit to support 1:50m datasets
