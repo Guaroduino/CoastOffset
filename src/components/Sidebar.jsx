@@ -30,6 +30,7 @@ const COLORS = [
 export default function Sidebar({
   theme,
   handleToggleTheme,
+  isCalculating,
   activeOffsets,
   handleAddOffset,
   handleDeleteOffset,
@@ -295,9 +296,18 @@ export default function Sidebar({
                   </div>
                 </div>
 
-                <button type="submit" className={mainBtnClass}>
-                  <Plus className="w-4 h-4" />
-                  <span>Calcular desde Costa</span>
+                <button type="submit" disabled={isCalculating} className={mainBtnClass}>
+                  {isCalculating ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-transparent animate-spin"></div>
+                      <span>Calculando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Calcular desde Costa</span>
+                    </>
+                  )}
                 </button>
               </form>
             </div>

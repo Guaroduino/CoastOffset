@@ -14,6 +14,7 @@ export default function App() {
   const [activeOffsets, setActiveOffsets] = useState([]);
   const [bookmarks, setBookmarks] = useState([]);
   const [selectedCountry, setSelectedCountry] = useState(null);
+  const [isCalculating, setIsCalculating] = useState(false);
   
   // Theme State
   const [theme, setTheme] = useState(() => {
@@ -142,53 +143,69 @@ export default function App() {
       return;
     }
 
+    setIsCalculating(true);
     showToast('Calculando offset global hacia el mar...', 'info');
 
     // Run turf buffer in a timeout to let UI update and show processing toast
     setTimeout(() => {
-      const geom = calculateCoastlineOffset(coastlinesData, countriesData, distance, unit, true);
-      
-      const newOffset = {
-        id: Math.random().toString(36).substring(2, 9),
-        distance,
-        unit,
-        distanceInKm: convertToKm(distance, unit),
-        label,
-        color,
-        visible: true,
-        geometry: geom
-      };
+      try {
+        const geom = calculateCoastlineOffset(coastlinesData, countriesData, distance, unit, true);
+        
+        const newOffset = {
+          id: Math.random().toString(36).substring(2, 9),
+          distance,
+          unit,
+          distanceInKm: convertToKm(distance, unit),
+          label,
+          color,
+          visible: true,
+          geometry: geom
+        };
 
-      persistOffsets([newOffset, ...activeOffsets]);
-      showToast(`Offset de ${distance} ${unit.toUpperCase()} calculado con éxito.`);
-    }, 50);
+        persistOffsets([newOffset, ...activeOffsets]);
+        showToast(`Offset de ${distance} ${unit.toUpperCase()} calculado con éxito.`);
+      } catch (err) {
+        console.error('Error calculando offset global:', err);
+        showToast('Error al calcular el offset geográfico.', 'error');
+      } finally {
+        setIsCalculating(false);
+      }
+    }, 150);
   };
 
   // 4. Add localized offset for selected country
   const handleCalculateCountryOffset = (distance, unit, customLabel) => {
     if (!selectedCountry || !countriesData) return;
 
+    setIsCalculating(true);
     showToast(`Calculando offset para ${selectedCountry.name}...`, 'info');
 
     setTimeout(() => {
-      // Buffer the specific country polygon, but subtract global land borders
-      const geom = calculateCoastlineOffset(selectedCountry.rawFeature, countriesData, distance, unit, true);
-      
-      const newOffset = {
-        id: Math.random().toString(36).substring(2, 9),
-        distance,
-        unit,
-        distanceInKm: convertToKm(distance, unit),
-        label: customLabel,
-        color: '#f59e0b', // Default yellow accent for country specific
-        visible: true,
-        geometry: geom
-      };
+      try {
+        // Buffer the specific country polygon, but subtract global land borders
+        const geom = calculateCoastlineOffset(selectedCountry.rawFeature, countriesData, distance, unit, true);
+        
+        const newOffset = {
+          id: Math.random().toString(36).substring(2, 9),
+          distance,
+          unit,
+          distanceInKm: convertToKm(distance, unit),
+          label: customLabel,
+          color: '#f59e0b', // Default yellow accent for country specific
+          visible: true,
+          geometry: geom
+        };
 
-      persistOffsets([newOffset, ...activeOffsets]);
-      showToast(`Offset localizado para ${selectedCountry.name} calculado.`);
-      setMobileSidebarOpen(false); // Close sidebar on mobile to show result
-    }, 50);
+        persistOffsets([newOffset, ...activeOffsets]);
+        showToast(`Offset localizado para ${selectedCountry.name} calculado.`);
+        setMobileSidebarOpen(false); // Close sidebar on mobile to show result
+      } catch (err) {
+        console.error('Error calculando offset localizado:', err);
+        showToast('Error al calcular el offset localizado.', 'error');
+      } finally {
+        setIsCalculating(false);
+      }
+    }, 150);
   };
 
   // 5. Delete offset
@@ -272,6 +289,7 @@ export default function App() {
         <Sidebar
           theme={theme}
           handleToggleTheme={handleToggleTheme}
+          isCalculating={isCalculating}
           activeOffsets={activeOffsets}
           handleAddOffset={handleAddOffset}
           handleDeleteOffset={handleDeleteOffset}
@@ -353,6 +371,28 @@ export default function App() {
               >
                 Calcular Offset Territorial (12 mn)
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Minimalist Loading Overlay for geometry calculations */}
+        {isCalculating && (
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm z-30 flex items-center justify-center pointer-events-auto transition-all animate-fadeIn">
+            <div className={`p-6 rounded-2xl border shadow-2xl flex flex-col items-center gap-4 text-center max-w-xs ${
+              theme === 'dark' 
+                ? 'bg-black/95 border-neutral-900 text-slate-100 shadow-black' 
+                : 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-300'
+            }`}>
+              <div className="relative flex items-center justify-center w-12 h-12">
+                <div className="absolute w-12 h-12 rounded-full border-4 border-indigo-500/20 animate-ping"></div>
+                <div className="absolute w-10 h-10 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
+              </div>
+              <div>
+                <h4 className="font-extrabold text-sm tracking-wide">Calculando Offset</h4>
+                <p className="text-[10px] text-slate-500 mt-1 font-semibold uppercase tracking-wider">
+                  Procesando geometría vectorial
+                </p>
+              </div>
             </div>
           </div>
         )}
