@@ -78,7 +78,8 @@ export default function MapView({
   mapCenter,
   mapZoom,
   setMapInstance,
-  onMapMove
+  onMapMove,
+  resolution
 }) {
   const countriesLayerRef = useRef(null);
   const mapContainerRef = useRef(null);
@@ -226,7 +227,7 @@ export default function MapView({
         {/* Global country borders */}
         {layerVisibility.borders && countriesData && (
           <GeoJSON
-            key={`countries-${baseMapStyle}-${theme}`}
+            key={`countries-${baseMapStyle}-${theme}-${resolution}`}
             data={countriesData}
             style={countryStyle}
             onEachFeature={onEachCountry}
@@ -237,7 +238,7 @@ export default function MapView({
         {/* Global coastlines */}
         {layerVisibility.coastlines && coastlinesData && (
           <GeoJSON
-            key={`coastlines-${theme}`}
+            key={`coastlines-${theme}-${resolution}`}
             data={coastlinesData}
             style={coastlineStyle}
           />

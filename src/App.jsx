@@ -17,7 +17,7 @@ export default function App() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [resolution, setResolution] = useState(() => {
-    return localStorage.getItem('coastmap_resolution') || 'detailed';
+    return localStorage.getItem('coastmap_resolution') || 'low';
   });
   
   // Theme State
@@ -444,6 +444,7 @@ export default function App() {
           mapZoom={mapZoom}
           setMapInstance={setMapInstance}
           onMapMove={handleMapMove}
+          resolution={resolution}
         />
       </main>
 
