@@ -31,6 +31,7 @@ export default function Sidebar({
   theme,
   handleToggleTheme,
   isCalculating,
+  isLoadingData,
   activeOffsets,
   handleAddOffset,
   handleDeleteOffset,
@@ -613,8 +614,11 @@ export default function Sidebar({
                       }`}
                     />
                     <div>
-                      <span className={`text-xs font-semibold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                      <span className={`text-xs font-semibold flex items-center gap-2 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
                         Baja (1:110m)
+                        {isLoadingData && resolution === 'low' && (
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin inline-block"></div>
+                        )}
                       </span>
                       <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
                         Cálculos instantáneos. Recomendado para ordenadores o móviles de gama baja. (~1 MB)
@@ -634,8 +638,11 @@ export default function Sidebar({
                       }`}
                     />
                     <div>
-                      <span className={`text-xs font-semibold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                      <span className={`text-xs font-semibold flex items-center gap-2 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
                         Alta (1:50m)
+                        {isLoadingData && resolution === 'detailed' && (
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin inline-block"></div>
+                        )}
                       </span>
                       <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
                         Líneas detalladas e islas adicionales. Requiere mayor capacidad de procesador. (~4.7 MB)

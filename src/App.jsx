@@ -15,6 +15,7 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState([]);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [resolution, setResolution] = useState(() => {
     return localStorage.getItem('coastmap_resolution') || 'detailed';
   });
@@ -45,32 +46,35 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // 1. Initial Load of world datasets based on active resolution
+  // 1. Load world datasets based on active resolution with loading state and Promise.all
   useEffect(() => {
-    const countriesPath = resolution === 'low' ? './data/countries_low.json' : './data/countries.json';
-    const coastlinesPath = resolution === 'low' ? './data/coastlines_low.json' : './data/coastlines.json';
+    setIsLoadingData(true);
+    
+    const countriesPath = resolution === 'low' ? './data/countries_low.json' : './data/countries_detailed.json';
+    const coastlinesPath = resolution === 'low' ? './data/coastlines_low.json' : './data/coastlines_detailed.json';
 
-    fetch(countriesPath)
-      .then(res => {
-        if (!res.ok) throw new Error('Network response error');
+    Promise.all([
+      fetch(countriesPath).then(res => {
+        if (!res.ok) throw new Error('Error al cargar fronteras');
+        return res.json();
+      }),
+      fetch(coastlinesPath).then(res => {
+        if (!res.ok) throw new Error('Error al cargar líneas de costa');
         return res.json();
       })
-      .then(data => setCountriesData(data))
-      .catch(err => {
-        console.error('Error loading country borders:', err);
-        showToast('Error cargando fronteras del mapa base. Revisa la red.', 'error');
-      });
-
-    fetch(coastlinesPath)
-      .then(res => {
-        if (!res.ok) throw new Error('Network response error');
-        return res.json();
-      })
-      .then(data => setCoastlinesData(data))
-      .catch(err => {
-        console.error('Error loading coastlines:', err);
-        showToast('Error cargando líneas de costa del mapa base. Revisa la red.', 'error');
-      });
+    ])
+    .then(([countries, coastlines]) => {
+      setCountriesData(countries);
+      setCoastlinesData(coastlines);
+      showToast(`Resolución ${resolution === 'low' ? 'Baja (1:110m)' : 'Alta (1:50m)'} cargada con éxito.`, 'success');
+    })
+    .catch(err => {
+      console.error('Error al cargar capas base:', err);
+      showToast('Error cargando las capas geográficas base.', 'error');
+    })
+    .finally(() => {
+      setIsLoadingData(false);
+    });
   }, [resolution]);
 
   // 2. Load Persisted State from LocalStorage
@@ -316,8 +320,8 @@ export default function App() {
           setResolution={(res) => {
             setResolution(res);
             localStorage.setItem('coastmap_resolution', res);
-            showToast(`Cargando resolución: ${res === 'low' ? 'Baja (1:110m)' : 'Alta (1:50m)'}...`, 'info');
           }}
+          isLoadingData={isLoadingData}
         />
       </div>
 
@@ -405,6 +409,22 @@ export default function App() {
                   Procesando geometría vectorial
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Loading Overlay for base geographic datasets */}
+        {isLoadingData && (
+          <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] z-30 flex items-center justify-center pointer-events-none transition-all">
+            <div className={`p-4 rounded-xl border shadow-xl flex items-center gap-3 ${
+              theme === 'dark' 
+                ? 'bg-black/90 border-neutral-900 text-slate-100 shadow-black' 
+                : 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-200'
+            }`}>
+              <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
+              <span className="text-xs font-bold tracking-wide">
+                Cargando mapa base ({resolution === 'low' ? 'Baja (1:110m)' : 'Alta (1:50m)'})...
+              </span>
             </div>
           </div>
         )}
