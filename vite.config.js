@@ -13,7 +13,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg', 'data/countries.json', 'data/coastlines.json'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,json}']
+        globPatterns: ['**/*.{js,css,html,svg,json}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // 6MB limit to support 1:50m datasets
       },
       manifest: {
         name: 'Coastline Mapping & Offsets PWA',
