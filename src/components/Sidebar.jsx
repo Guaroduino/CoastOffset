@@ -690,7 +690,7 @@ export default function Sidebar({
       <div className={`p-4 border-t text-center text-[9px] font-semibold tracking-wide uppercase transition-colors ${
         theme === 'dark' ? 'border-neutral-900 bg-neutral-950/40 text-slate-600' : 'border-slate-100 bg-slate-50/50 text-slate-400'
       }`}>
-        <p>Antigravity Map Engine v1.0</p>
+        <p>Desarrollado por Her. Corado 2026. Venezuela</p>
         <p className="mt-0.5">Funciona 100% Offline</p>
       </div>
     </aside>
